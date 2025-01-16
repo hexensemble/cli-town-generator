@@ -27,3 +27,6 @@ target/
 ._*
 ehthumbs.db
 Thumbs.db
+
+# Output folder
+output/
