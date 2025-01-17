@@ -2,6 +2,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::Graph;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
@@ -45,6 +46,12 @@ const MIN_NPCS: u32 = 4;
 
 // Max number of NPCs per building
 const MAX_NPCS: u32 = 10;
+
+// Min number of rooms per building
+const MIN_ROOMS: u32 = 2;
+
+// Max number of rooms per building
+const MAX_ROOMS: u32 = 6;
 
 // Input directory for loading files
 const INPUT_DIR: &str = "input";
@@ -93,10 +100,8 @@ struct Building {
     id: u32,
     name: String,
     building_type: BuildingType,
-    doors: u32,
-    windows: u32,
     coords: (u32, u32),
-    npcs: Vec<Npc>,
+    rooms: Vec<Room>,
 }
 
 // Enum for building types
@@ -132,6 +137,50 @@ enum NpcRace {
     Elf,
 }
 
+// Struct for representing a room
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Room {
+    id: u32,
+    npcs: Vec<Npc>,
+    containers: Vec<Container>,
+}
+
+// Struct for representing a container
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Container {
+    id: u32,
+    name: String,
+    container_type: ContainerType,
+}
+
+// Enum for container types
+#[derive(Serialize, Deserialize, Debug, Clone, EnumCount, EnumIter)]
+enum ContainerType {
+    Barrel,
+    Crate,
+    Chest,
+}
+
+// Function for loading in lists of names from .TXT files
+fn load_list(filename: &str) -> Vec<String> {
+    let filepath = format!("{}/{}", INPUT_DIR, filename);
+
+    match fs::File::open(filepath) {
+        Ok(file) => {
+            let reader = io::BufReader::new(file);
+
+            let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
+            lines
+        }
+        Err(e) => {
+            eprint!("{}", e);
+
+            let lines = vec!["NO DATA".into()];
+            lines
+        }
+    }
+}
+
 // Function to generate multiple towns and create a graph
 fn generate_towns(number_of_towns: usize) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
     let seed = seed_from_word();
@@ -140,7 +189,7 @@ fn generate_towns(number_of_towns: usize) -> (Graph<Town, JourneyInfo>, Vec<Town
     let mut town_ids = HashSet::new();
     let mut building_ids = HashSet::new();
     let mut npc_ids = HashSet::new();
-
+    let mut room_ids = HashSet::new();
     let mut towns = Vec::new();
 
     for _ in 0..number_of_towns {
@@ -156,6 +205,7 @@ fn generate_towns(number_of_towns: usize) -> (Graph<Town, JourneyInfo>, Vec<Town
             number_of_buildings,
             &mut building_ids,
             &mut npc_ids,
+            &mut room_ids,
         );
 
         towns.push(Town {
@@ -193,6 +243,7 @@ fn generate_buildings(
     number_of_buildings: u32,
     building_ids: &mut HashSet<u32>,
     npc_ids: &mut HashSet<u32>,
+    room_ids: &mut HashSet<u32>,
 ) -> Vec<Building> {
     let mut buildings = Vec::new();
     let grid_size = (number_of_buildings as f32).sqrt().ceil() as u32;
@@ -213,20 +264,17 @@ fn generate_buildings(
             _ => BuildingType::Residence,
         };
 
-        let doors = rng.gen_range(1..=3);
-        let windows = rng.gen_range(2..10);
-
         let mut building = Building {
             id: building_id,
             name: generate_building_name(rng, &building_type),
             building_type,
-            doors,
-            windows,
             coords: position,
-            npcs: Vec::new(),
+            rooms: Vec::new(),
         };
 
-        building.npcs = generate_npcs(rng, &building.building_type, &building.name, npc_ids);
+        let mut npcs = generate_npcs(rng, &building.building_type, &building.name, npc_ids);
+
+        building.rooms = generate_rooms(rng, &mut npcs, room_ids);
 
         buildings.push(building);
 
@@ -387,6 +435,37 @@ fn generate_npc_name(
             format!("{} of the {}", firstname, building_name)
         }
     }
+}
+
+// Generate rooms
+fn generate_rooms(rng: &mut StdRng, npcs: &mut Vec<Npc>, room_ids: &mut HashSet<u32>) -> Vec<Room> {
+    let mut rooms = Vec::new();
+
+    let number_of_rooms = rng.gen_range(MIN_ROOMS..MAX_ROOMS);
+
+    for _ in 0..number_of_rooms {
+        let mut room_id = rng.gen_range(1..MAX_ID);
+        while room_ids.contains(&room_id) {
+            room_id = rng.gen_range(1..MAX_ID);
+        }
+        room_ids.insert(room_id);
+
+        rooms.push(Room {
+            id: room_id,
+            containers: Vec::new(),
+            npcs: Vec::new(),
+        });
+    }
+
+    npcs.shuffle(rng);
+
+    for npc in npcs.drain(..) {
+        if let Some(room) = rooms.choose_mut(rng) {
+            room.npcs.push(npc);
+        }
+    }
+
+    rooms
 }
 
 // Generate a town name using a prefix-root-suffix combination
@@ -586,6 +665,7 @@ fn generate_towns_from_imported_raw_graph(graph: &Graph<TownRaw, JourneyInfo>) -
     let mut town_ids = HashSet::new();
     let mut building_ids = HashSet::new();
     let mut npc_ids = HashSet::new();
+    let mut room_ids = HashSet::new();
 
     let mut towns = Vec::new();
 
@@ -602,6 +682,7 @@ fn generate_towns_from_imported_raw_graph(graph: &Graph<TownRaw, JourneyInfo>) -
             number_of_buildings,
             &mut building_ids,
             &mut npc_ids,
+            &mut room_ids,
         );
 
         towns.push(Town {
@@ -645,26 +726,6 @@ fn generate_graph_from_imported_towns(
     }
 
     town_graph
-}
-
-// Function for loading in lists of names from .TXT files
-fn load_list(filename: &str) -> Vec<String> {
-    let filepath = format!("{}/{}", INPUT_DIR, filename);
-
-    match fs::File::open(filepath) {
-        Ok(file) => {
-            let reader = io::BufReader::new(file);
-
-            let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-            lines
-        }
-        Err(e) => {
-            eprint!("{}", e);
-
-            let lines = vec!["NO DATA".into()];
-            lines
-        }
-    }
 }
 
 // Main function
