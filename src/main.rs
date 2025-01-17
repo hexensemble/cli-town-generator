@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs;
 use std::hash::{Hash, Hasher};
+use std::io::BufRead;
+use std::{fs, io};
 use strum::EnumCount;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -27,7 +28,7 @@ const MIN_DISTANCE: u32 = 2;
 // Max distance between towns
 const MAX_DISTANCE: u32 = 50;
 
-// Initial cost of travel which will be timesd by distance
+// Initial cost of travel which will be mutiplied by distance
 const COST: u32 = 5;
 
 // Max number for IDs
@@ -45,7 +46,10 @@ const MIN_NPCS: u32 = 4;
 // Max number of NPCs per building
 const MAX_NPCS: u32 = 10;
 
-// Output directory for saved files
+// Input directory for loading files
+const INPUT_DIR: &str = "input";
+
+// Output directory for saving files
 const OUTPUT_DIR: &str = "output";
 
 // Struct for representing a town
@@ -238,188 +242,43 @@ fn generate_buildings(
 
 // Generate a building name
 fn generate_building_name(rng: &mut StdRng, building_type: &BuildingType) -> String {
-    let names = [
-        "Abe",
-        "Alden",
-        "Ashford",
-        "Atwood",
-        "Baldwin",
-        "Bancroft",
-        "Beaumont",
-        "Bradshaw",
-        "Bridgeman",
-        "Burton",
-        "Carter",
-        "Chester",
-        "Cuthbert",
-        "Darcy",
-        "Day",
-        "Dudley",
-        "Eldon",
-        "Everton",
-        "Fairfax",
-        "Fenton",
-        "Foster",
-        "Fox",
-        "Garland",
-        "Grayson",
-        "Greenwood",
-        "Hawkins",
-        "Hartley",
-        "Harper",
-        "Kirkland",
-        "Lancelot",
-        "Langley",
-        "Lindley",
-        "Mansfield",
-        "Mercer",
-        "Milton",
-        "Osborne",
-        "Radcliffe",
-        "Ramsey",
-        "Ravenwood",
-        "Ridley",
-        "Sanders",
-        "Shelton",
-        "Stanford",
-        "Sutton",
-        "Thornton",
-        "Underhill",
-        "Wakefield",
-        "Whitmore",
-        "Wilkins",
-        "Wyndham",
-        "Abe",
-        "Aoki",
-        "Arakawa",
-        "Asano",
-        "Chiba",
-        "Chisaka",
-        "Chō",
-        "Date",
-        "Eguchi",
-        "Fujimoto",
-        "Fujisawa",
-        "Fujita",
-        "Fukuda",
-        "Furukawa",
-        "Goda",
-        "Hamada",
-        "Hanazawa",
-        "Harada",
-        "Hashimoto",
-        "Hayashi",
-        "Higashi",
-        "Hino",
-        "Ichikawa",
-        "Igarashi",
-        "Ikeda",
-        "Inoue",
-        "Ishikawa",
-        "Ito",
-        "Kawasaki",
-        "Kimura",
-        "Kobayashi",
-        "Kojima",
-        "Kondo",
-        "Maeda",
-        "Matsuda",
-        "Matsumoto",
-        "Minamoto",
-        "Miyamoto",
-        "Miyazaki",
-        "Nakagawa",
-        "Nakano",
-        "Nishida",
-        "Nishimura",
-        "Ogawa",
-        "Okamoto",
-        "Ono",
-        "Sakai",
-        "Sakamoto",
-        "Sasaki",
-        "Shimizu",
-        "Sugawara",
-        "Takahashi",
-        "Takeda",
-        "Tanaka",
-        "Tsubaki",
-        "Uchida",
-        "Ueda",
-        "Watanabe",
-        "Yamamoto",
-        "Yamashita",
-        "Yoshida",
-        "Yoshimoto",
-    ];
-
-    let shops = [
-        "Store", "Boutique", "Market", "Emporium", "Outlet", "Depot", "Mart", "Vendor", "Retailer",
-        "Booth", "Gallery", "Deli", "Workshop", "Kiosk", "Showroom",
-    ];
-
-    let taverns = [
-        "The Red Lion",
-        "The Crown & Anchor",
-        "The King's Arms",
-        "The Queen's Head",
-        "The White Hart",
-        "The Black Bull",
-        "The Green Man",
-        "The Swan & Crown",
-        "The Royal Oak",
-        "The George & Dragon",
-        "The Jolly Tinker",
-        "The Rusty Sword",
-        "The Stag & Hound",
-        "The Fox & Hounds",
-        "The Griffin's Nest",
-        "The Boar’s Head",
-        "The Chequers",
-        "The Golden Hind",
-        "The Merry Ploughman",
-        "The Drunken Duck",
-        "The Carpenter's Arms",
-        "The Shipwright's Rest",
-        "The Butcher's Hook",
-        "The Cooper’s Barrel",
-        "The Blacksmith’s Forge",
-        "The Nag’s Head",
-        "The Goat & Compass",
-        "The Cat & Fiddle",
-        "The Dog & Duck",
-        "The Cock & Bottle",
-        "The Witch’s Cauldron",
-        "The Phantom Coach",
-        "The Headless Horseman",
-        "The Olde Howling Wolf",
-        "The Devil’s Elbow",
-        "The Smuggler’s Rest",
-        "The Admiral’s Arms",
-        "The Jolly Sailor",
-        "The Anchor & Bell",
-        "The Mariner’s Return",
-    ];
-
-    let temples = ["Light", "Grey", "Dark"];
+    let surnames = load_list("surnames.txt");
+    let shops = load_list("shops.txt");
+    let taverns = load_list("taverns.txt");
+    let temples = load_list("temples.txt");
 
     match building_type {
         BuildingType::Residence => {
-            let name = names[rng.gen_range(0..names.len())];
-            format!("{} Residence", name)
+            if let Some(name) = surnames.get(rng.gen_range(0..surnames.len())) {
+                format!("{} Residence", name)
+            } else {
+                "NO DATA".into()
+            }
         }
         BuildingType::Shop => {
-            let name = names[rng.gen_range(0..names.len())];
-            let shop = shops[rng.gen_range(0..shops.len())];
-            format!("{}'s {}", name, shop)
+            if let Some(name) = surnames.get(rng.gen_range(0..surnames.len())) {
+                if let Some(shop) = shops.get(rng.gen_range(0..shops.len())) {
+                    format!("{}'s {}", name, shop)
+                } else {
+                    "NO DATA".into()
+                }
+            } else {
+                "NO DATA".into()
+            }
         }
         BuildingType::Tavern => {
-            let name = taverns[rng.gen_range(0..taverns.len())];
-            format!("{}", name)
+            if let Some(name) = taverns.get(rng.gen_range(0..taverns.len())) {
+                name.to_string()
+            } else {
+                "NO DATA".into()
+            }
         }
         BuildingType::Temple => {
-            let temple = temples[rng.gen_range(0..temples.len())];
-            format!("Temple of the {}", temple)
+            if let Some(temple) = temples.get(rng.gen_range(0..temples.len())) {
+                format!("Temple of the {}", temple)
+            } else {
+                "NO DATA".into()
+            }
         }
     }
 }
@@ -477,176 +336,35 @@ fn generate_npc_name(
     building_name: &str,
     npc_sex: &NpcSex,
 ) -> String {
-    let male_names = [
-        "Aethelred",
-        "Beorn",
-        "Cuthbert",
-        "Eadric",
-        "Edmund",
-        "Aelfric",
-        "Godric",
-        "Oswald",
-        "Wilfrid",
-        "Leofric",
-        "Haruto",
-        "Ren",
-        "Takumi",
-        "Kaito",
-        "Riku",
-        "Souta",
-        "Daichi",
-        "Ryota",
-        "Takeshi",
-        "Hiroshi",
-    ];
+    let names_male = load_list("names-male.txt");
+    let names_female = load_list("names-female.txt");
+    let names_unisex = load_list("names-unisex.txt");
+    let surnames = load_list("surnames.txt");
 
-    let female_names = [
-        "Aethelthryth",
-        "Cwen",
-        "Eadgifu",
-        "Edith",
-        "Aelfwyn",
-        "Hild",
-        "Godiva",
-        "Leofwynn",
-        "Mildrith",
-        "Wulfhild",
-        "Sakura",
-        "Aiko",
-        "Yui",
-        "Hana",
-        "Reina",
-        "Rin",
-        "Mei",
-        "Nozomi",
-        "Natsuki",
-        "Kaede",
-    ];
+    let firstname: String;
 
-    let unisex_names = [
-        "Wyn", "Cyne", "Ead", "Aelf", "Burg", "Hikaru", "Itsuki", "Ren", "Sora", "Minori",
-        "Makoto", "Hinata", "Nao", "Asa", "Tsubasa",
-    ];
-
-    let surnames = [
-        "Abe",
-        "Alden",
-        "Ashford",
-        "Atwood",
-        "Baldwin",
-        "Bancroft",
-        "Beaumont",
-        "Bradshaw",
-        "Bridgeman",
-        "Burton",
-        "Carter",
-        "Chester",
-        "Cuthbert",
-        "Darcy",
-        "Day",
-        "Dudley",
-        "Eldon",
-        "Everton",
-        "Fairfax",
-        "Fenton",
-        "Foster",
-        "Fox",
-        "Garland",
-        "Grayson",
-        "Greenwood",
-        "Hawkins",
-        "Hartley",
-        "Harper",
-        "Kirkland",
-        "Lancelot",
-        "Langley",
-        "Lindley",
-        "Mansfield",
-        "Mercer",
-        "Milton",
-        "Osborne",
-        "Radcliffe",
-        "Ramsey",
-        "Ravenwood",
-        "Ridley",
-        "Sanders",
-        "Shelton",
-        "Stanford",
-        "Sutton",
-        "Thornton",
-        "Underhill",
-        "Wakefield",
-        "Whitmore",
-        "Wilkins",
-        "Wyndham",
-        "Abe",
-        "Aoki",
-        "Arakawa",
-        "Asano",
-        "Chiba",
-        "Chisaka",
-        "Chō",
-        "Date",
-        "Eguchi",
-        "Fujimoto",
-        "Fujisawa",
-        "Fujita",
-        "Fukuda",
-        "Furukawa",
-        "Goda",
-        "Hamada",
-        "Hanazawa",
-        "Harada",
-        "Hashimoto",
-        "Hayashi",
-        "Higashi",
-        "Hino",
-        "Ichikawa",
-        "Igarashi",
-        "Ikeda",
-        "Inoue",
-        "Ishikawa",
-        "Ito",
-        "Kawasaki",
-        "Kimura",
-        "Kobayashi",
-        "Kojima",
-        "Kondo",
-        "Maeda",
-        "Matsuda",
-        "Matsumoto",
-        "Minamoto",
-        "Miyamoto",
-        "Miyazaki",
-        "Nakagawa",
-        "Nakano",
-        "Nishida",
-        "Nishimura",
-        "Ogawa",
-        "Okamoto",
-        "Ono",
-        "Sakai",
-        "Sakamoto",
-        "Sasaki",
-        "Shimizu",
-        "Sugawara",
-        "Takahashi",
-        "Takeda",
-        "Tanaka",
-        "Tsubaki",
-        "Uchida",
-        "Ueda",
-        "Watanabe",
-        "Yamamoto",
-        "Yamashita",
-        "Yoshida",
-        "Yoshimoto",
-    ];
-
-    let firstname = match npc_sex {
-        NpcSex::Male => male_names[rng.gen_range(0..male_names.len())],
-        NpcSex::Female => female_names[rng.gen_range(0..female_names.len())],
-        NpcSex::Unisex => unisex_names[rng.gen_range(0..unisex_names.len())],
+    match npc_sex {
+        NpcSex::Male => {
+            if let Some(name) = names_male.get(rng.gen_range(0..names_male.len())) {
+                firstname = name.to_string();
+            } else {
+                firstname = "NO DATA".into();
+            }
+        }
+        NpcSex::Female => {
+            if let Some(name) = names_female.get(rng.gen_range(0..names_female.len())) {
+                firstname = name.to_string();
+            } else {
+                firstname = "NO DATA".into();
+            }
+        }
+        NpcSex::Unisex => {
+            if let Some(name) = names_unisex.get(rng.gen_range(0..names_unisex.len())) {
+                firstname = name.to_string();
+            } else {
+                firstname = "NO DATA".into();
+            }
+        }
     };
 
     match building_type {
@@ -659,8 +377,11 @@ fn generate_npc_name(
             format!("{} {}", firstname, surname)
         }
         BuildingType::Tavern => {
-            let surname = surnames[rng.gen_range(0..surnames.len())];
-            format!("{} {}", firstname, surname)
+            if let Some(surname) = surnames.get(rng.gen_range(0..surnames.len())) {
+                format!("{} {}", firstname, surname)
+            } else {
+                format!("{} NO DATA", firstname)
+            }
         }
         BuildingType::Temple => {
             format!("{} of the {}", firstname, building_name)
@@ -670,25 +391,30 @@ fn generate_npc_name(
 
 // Generate a town name using a prefix-root-suffix combination
 fn generate_town_name(rng: &mut StdRng) -> String {
-    let prefixes = [
-        "Ō", "Ko", "Higashi", "Nishi", "Minami", "Kita", "Shimo", "Kami", "Alder", "Ash", "Beck",
-        "Bishop", "Bur", "Chester", "Har", "Middle", "North", "South", "East", "West", "Stoke",
-    ];
+    let prefixes = load_list("town-prefixes.txt");
+    let roots = load_list("town-roots.txt");
+    let suffixes = load_list("town-suffixes.txt");
 
-    let roots = [
-        "Yama", "Kawa", "Ta", "Shima", "Hama", "Tōri", "Mori", "Tani", "Saka", "Fune", "Machi",
-        "Jō", "Dun", "Hām", "Hyrst", "Feld", "Tun", "Wic", "Leah", "Thorpe", "By", "Burh", "Ford",
-        "Bridge", "Thwaite", "Worth", "Stead", "Mere", "Dene", "Hoe",
-    ];
+    let prefix: String;
+    if let Some(name) = prefixes.get(rng.gen_range(0..prefixes.len())) {
+        prefix = name.to_string();
+    } else {
+        prefix = "NO DATA".into();
+    }
 
-    let suffixes = [
-        "shi", "mura", "chō", "ken", "gun", "dō", "jima", "shi", "cester", "wich", "wick", "bury",
-        "borough", "burgh", "ton", "stead", "hampton", "hampton", "stoke", "gate", "ford", "port",
-    ];
+    let root: String;
+    if let Some(name) = roots.get(rng.gen_range(0..roots.len())) {
+        root = name.to_string();
+    } else {
+        root = "NO DATA".into();
+    }
 
-    let prefix = prefixes[rng.gen_range(0..prefixes.len())];
-    let root = roots[rng.gen_range(0..roots.len())];
-    let suffix = suffixes[rng.gen_range(0..suffixes.len())];
+    let suffix: String;
+    if let Some(name) = suffixes.get(rng.gen_range(0..suffixes.len())) {
+        suffix = name.to_string();
+    } else {
+        suffix = "NO DATA".into();
+    }
 
     format!("{} {}{}", prefix, root, suffix)
 }
@@ -919,6 +645,26 @@ fn generate_graph_from_imported_towns(
     }
 
     town_graph
+}
+
+// Function for loading in lists of names from .TXT files
+fn load_list(filename: &str) -> Vec<String> {
+    let filepath = format!("{}/{}", INPUT_DIR, filename);
+
+    match fs::File::open(filepath) {
+        Ok(file) => {
+            let reader = io::BufReader::new(file);
+
+            let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
+            lines
+        }
+        Err(e) => {
+            eprint!("{}", e);
+
+            let lines = vec!["NO DATA".into()];
+            lines
+        }
+    }
 }
 
 // Main function
