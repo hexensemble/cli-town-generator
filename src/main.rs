@@ -232,13 +232,17 @@ fn generate_towns(seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
 
     let mut towns = Vec::new();
 
+    let prefixes = load_list("town-prefixes.txt");
+    let roots = load_list("town-roots.txt");
+    let suffixes = load_list("town-suffixes.txt");
+
     for _ in 0..NUM_OF_TOWNS {
         let number_of_buildings = rng.gen_range(MIN_BUILDINGS..MAX_BUILDINGS);
         let buildings = generate_buildings(&mut rng, &mut id_tracker, number_of_buildings);
 
         towns.push(Town {
             id: id_tracker.get_new_id(),
-            name: generate_town_name(&mut rng),
+            name: generate_town_name(&mut rng, &prefixes, &roots, &suffixes),
             coords: (0, 0),
             number_of_buildings,
             buildings,
@@ -257,6 +261,37 @@ fn generate_towns(seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
     (graph_and_nodes.0, list_of_towns)
 }
 
+// Generate a town name using a prefix-root-suffix combination
+fn generate_town_name(
+    rng: &mut StdRng,
+    prefixes: &[String],
+    roots: &[String],
+    suffixes: &[String],
+) -> String {
+    let prefix: String;
+    if let Some(name) = prefixes.get(rng.gen_range(0..prefixes.len())) {
+        prefix = name.to_string();
+    } else {
+        prefix = "NO DATA".into();
+    }
+
+    let root: String;
+    if let Some(name) = roots.get(rng.gen_range(0..roots.len())) {
+        root = name.to_string();
+    } else {
+        root = "NO DATA".into();
+    }
+
+    let suffix: String;
+    if let Some(name) = suffixes.get(rng.gen_range(0..suffixes.len())) {
+        suffix = name.to_string();
+    } else {
+        suffix = "NO DATA".into();
+    }
+
+    format!("{} {}{}", prefix, root, suffix)
+}
+
 // Function to generate buildings
 fn generate_buildings(
     rng: &mut StdRng,
@@ -264,6 +299,11 @@ fn generate_buildings(
     number_of_buildings: u32,
 ) -> Vec<Building> {
     let mut buildings = Vec::new();
+
+    let surnames = load_list("surnames.txt");
+    let shops = load_list("shops.txt");
+    let taverns = load_list("taverns.txt");
+    let temples = load_list("temples.txt");
 
     let grid_size = (number_of_buildings as f32).sqrt().ceil() as u32;
     let mut position = (0, 0);
@@ -279,7 +319,14 @@ fn generate_buildings(
 
         let mut building = Building {
             id: id_tracker.get_new_id(),
-            name: generate_building_name(rng, &building_type),
+            name: generate_building_name(
+                rng,
+                &building_type,
+                &surnames,
+                &shops,
+                &taverns,
+                &temples,
+            ),
             building_type,
             coords: position,
             rooms: Vec::new(),
@@ -302,12 +349,14 @@ fn generate_buildings(
 }
 
 // Generate a building name
-fn generate_building_name(rng: &mut StdRng, building_type: &BuildingType) -> String {
-    let surnames = load_list("surnames.txt");
-    let shops = load_list("shops.txt");
-    let taverns = load_list("taverns.txt");
-    let temples = load_list("temples.txt");
-
+fn generate_building_name(
+    rng: &mut StdRng,
+    building_type: &BuildingType,
+    surnames: &[String],
+    shops: &[String],
+    taverns: &[String],
+    temples: &[String],
+) -> String {
     match building_type {
         BuildingType::Residence => {
             if let Some(name) = surnames.get(rng.gen_range(0..surnames.len())) {
@@ -353,6 +402,11 @@ fn generate_npcs(
 ) -> Vec<Npc> {
     let mut npcs = Vec::new();
 
+    let names_male = load_list("names-male.txt");
+    let names_female = load_list("names-female.txt");
+    let names_unisex = load_list("names-unisex.txt");
+    let surnames = load_list("surnames.txt");
+
     let number_of_npcs = match building_type {
         BuildingType::Shop => 1,
         BuildingType::Residence => 2,
@@ -375,7 +429,16 @@ fn generate_npcs(
 
         npcs.push(Npc {
             id: id_tracker.get_new_id(),
-            name: generate_npc_name(rng, building_name, building_type, &sex),
+            name: generate_npc_name(
+                rng,
+                building_name,
+                building_type,
+                &sex,
+                &names_male,
+                &names_female,
+                &names_unisex,
+                &surnames,
+            ),
             sex,
             race,
         });
@@ -385,17 +448,17 @@ fn generate_npcs(
 }
 
 // Generate an NPC name
+#[allow(clippy::too_many_arguments)]
 fn generate_npc_name(
     rng: &mut StdRng,
     building_name: &str,
     building_type: &BuildingType,
     npc_sex: &NpcSex,
+    names_male: &[String],
+    names_female: &[String],
+    names_unisex: &[String],
+    surnames: &[String],
 ) -> String {
-    let names_male = load_list("names-male.txt");
-    let names_female = load_list("names-female.txt");
-    let names_unisex = load_list("names-unisex.txt");
-    let surnames = load_list("surnames.txt");
-
     let firstname: String;
 
     match npc_sex {
@@ -490,36 +553,6 @@ fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Cont
     }
 
     containers
-}
-
-// Generate a town name using a prefix-root-suffix combination
-fn generate_town_name(rng: &mut StdRng) -> String {
-    let prefixes = load_list("town-prefixes.txt");
-    let roots = load_list("town-roots.txt");
-    let suffixes = load_list("town-suffixes.txt");
-
-    let prefix: String;
-    if let Some(name) = prefixes.get(rng.gen_range(0..prefixes.len())) {
-        prefix = name.to_string();
-    } else {
-        prefix = "NO DATA".into();
-    }
-
-    let root: String;
-    if let Some(name) = roots.get(rng.gen_range(0..roots.len())) {
-        root = name.to_string();
-    } else {
-        root = "NO DATA".into();
-    }
-
-    let suffix: String;
-    if let Some(name) = suffixes.get(rng.gen_range(0..suffixes.len())) {
-        suffix = name.to_string();
-    } else {
-        suffix = "NO DATA".into();
-    }
-
-    format!("{} {}{}", prefix, root, suffix)
 }
 
 // Generate a graph with towns and edges with distance and cost
