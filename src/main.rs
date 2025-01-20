@@ -32,6 +32,9 @@ const MAX_DISTANCE: u32 = 50;
 // Initial cost of travel which will be mutiplied by distance
 const COST: u32 = 5;
 
+// Min number for IDs
+const MIN_ID: u32 = 1;
+
 // Max number for IDs
 const MAX_ID: u32 = 100000;
 
@@ -167,6 +170,34 @@ enum ContainerType {
     Chest,
 }
 
+// Struct for ID Tracker, keeps track of IDs and generates new ones
+struct IdTracker {
+    ids: HashSet<u32>,
+    rng: StdRng,
+}
+
+impl IdTracker {
+    fn new(seed: u64) -> Self {
+        let rng = StdRng::seed_from_u64(seed);
+
+        Self {
+            ids: HashSet::new(),
+            rng,
+        }
+    }
+
+    fn get_new_id(&mut self) -> u32 {
+        let mut id = self.rng.gen_range(MIN_ID..MAX_ID);
+
+        while self.ids.contains(&id) {
+            id = self.rng.gen_range(MIN_ID..MAX_ID);
+        }
+        self.ids.insert(id);
+
+        id
+    }
+}
+
 // Function for loading in lists of names from .TXT files
 fn load_list(filename: &str) -> Vec<String> {
     let filepath = format!("{}/{}", INPUT_DIR, filename);
@@ -188,39 +219,34 @@ fn load_list(filename: &str) -> Vec<String> {
 }
 
 // Function to derive a consistent seed from a word or phrase
-fn seed_from_word() -> u64 {
+fn seed_from_word(word: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
-    SEED.hash(&mut hasher);
+    word.hash(&mut hasher);
     hasher.finish()
 }
 
 // Function to generate multiple towns and create a graph
-fn generate_towns(
-    rng: &mut StdRng,
-    ids: &mut HashSet<u32>,
-) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
+fn generate_towns(seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut id_tracker = IdTracker::new(seed);
+
     let mut towns = Vec::new();
 
     for _ in 0..NUM_OF_TOWNS {
-        let mut town_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&town_id) {
-            town_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(town_id);
-
         let number_of_buildings = rng.gen_range(MIN_BUILDINGS..MAX_BUILDINGS);
-        let buildings = generate_buildings(rng, ids, number_of_buildings);
+        let buildings = generate_buildings(&mut rng, &mut id_tracker, number_of_buildings);
 
         towns.push(Town {
-            id: town_id,
-            name: generate_town_name(rng),
+            id: id_tracker.get_new_id(),
+            name: generate_town_name(&mut rng),
             coords: (0, 0),
             number_of_buildings,
             buildings,
         });
     }
 
-    let graph_and_nodes: (Graph<Town, JourneyInfo>, Vec<NodeIndex>) = generate_graph(rng, towns);
+    let graph_and_nodes: (Graph<Town, JourneyInfo>, Vec<NodeIndex>) =
+        generate_graph(&mut rng, towns);
 
     let list_of_towns: Vec<Town> = graph_and_nodes
         .1
@@ -234,7 +260,7 @@ fn generate_towns(
 // Function to generate buildings
 fn generate_buildings(
     rng: &mut StdRng,
-    ids: &mut HashSet<u32>,
+    id_tracker: &mut IdTracker,
     number_of_buildings: u32,
 ) -> Vec<Building> {
     let mut buildings = Vec::new();
@@ -243,12 +269,6 @@ fn generate_buildings(
     let mut position = (0, 0);
 
     for _ in 0..number_of_buildings {
-        let mut building_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&building_id) {
-            building_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(building_id);
-
         let building_type = match rng.gen_range(0..BuildingType::COUNT) {
             0 => BuildingType::Residence,
             1 => BuildingType::Shop,
@@ -258,16 +278,16 @@ fn generate_buildings(
         };
 
         let mut building = Building {
-            id: building_id,
+            id: id_tracker.get_new_id(),
             name: generate_building_name(rng, &building_type),
             building_type,
             coords: position,
             rooms: Vec::new(),
         };
 
-        let mut npcs = generate_npcs(rng, ids, &building.name, &building.building_type);
+        let mut npcs = generate_npcs(rng, id_tracker, &building.name, &building.building_type);
 
-        building.rooms = generate_rooms(rng, ids, &mut npcs);
+        building.rooms = generate_rooms(rng, id_tracker, &mut npcs);
 
         buildings.push(building);
 
@@ -327,7 +347,7 @@ fn generate_building_name(rng: &mut StdRng, building_type: &BuildingType) -> Str
 // Generate NPCs
 fn generate_npcs(
     rng: &mut StdRng,
-    ids: &mut HashSet<u32>,
+    id_tracker: &mut IdTracker,
     building_name: &str,
     building_type: &BuildingType,
 ) -> Vec<Npc> {
@@ -340,12 +360,6 @@ fn generate_npcs(
     };
 
     for _ in 0..number_of_npcs {
-        let mut npc_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&npc_id) {
-            npc_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(npc_id);
-
         let sex = match rng.gen_range(0..NpcSex::COUNT) {
             0 => NpcSex::Male,
             1 => NpcSex::Female,
@@ -360,7 +374,7 @@ fn generate_npcs(
         };
 
         npcs.push(Npc {
-            id: npc_id,
+            id: id_tracker.get_new_id(),
             name: generate_npc_name(rng, building_name, building_type, &sex),
             sex,
             race,
@@ -431,22 +445,16 @@ fn generate_npc_name(
 }
 
 // Generate rooms
-fn generate_rooms(rng: &mut StdRng, ids: &mut HashSet<u32>, npcs: &mut Vec<Npc>) -> Vec<Room> {
+fn generate_rooms(rng: &mut StdRng, id_tracker: &mut IdTracker, npcs: &mut Vec<Npc>) -> Vec<Room> {
     let mut rooms = Vec::new();
 
     let number_of_rooms = rng.gen_range(MIN_ROOMS..MAX_ROOMS);
 
     for _ in 0..number_of_rooms {
-        let mut room_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&room_id) {
-            room_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(room_id);
-
         rooms.push(Room {
-            id: room_id,
+            id: id_tracker.get_new_id(),
             npcs: Vec::new(),
-            containers: generate_containers(rng, ids),
+            containers: generate_containers(rng, id_tracker),
         });
     }
 
@@ -462,18 +470,12 @@ fn generate_rooms(rng: &mut StdRng, ids: &mut HashSet<u32>, npcs: &mut Vec<Npc>)
 }
 
 // Generate containers
-fn generate_containers(rng: &mut StdRng, ids: &mut HashSet<u32>) -> Vec<Container> {
+fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Container> {
     let mut containers = Vec::new();
 
     let num_of_containers = rng.gen_range(MIN_CONTAINERS..MAX_CONTAINERS);
 
     for _ in 0..num_of_containers {
-        let mut container_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&container_id) {
-            container_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(container_id);
-
         let container_type = match rng.gen_range(0..ContainerType::COUNT) {
             0 => ContainerType::Barrel,
             1 => ContainerType::Crate,
@@ -482,7 +484,7 @@ fn generate_containers(rng: &mut StdRng, ids: &mut HashSet<u32>) -> Vec<Containe
         };
 
         containers.push(Container {
-            id: container_id,
+            id: id_tracker.get_new_id(),
             container_type,
         });
     }
@@ -589,13 +591,12 @@ fn save_towns(towns: &Vec<Town>, filename: &str) -> Result<String, std::io::Erro
 
 // Import a DOT file and generate Towns and Graph
 fn import(
-    rng: &mut StdRng,
-    ids: &mut HashSet<u32>,
     filename: &str,
+    seed: u64,
 ) -> Result<(Graph<Town, JourneyInfo>, Vec<Town>), std::io::Error> {
     let imported_raw_graph = load_dot(filename)?;
 
-    let imported_towns = generate_towns_from_imported_raw_graph(rng, ids, &imported_raw_graph);
+    let imported_towns = generate_towns_from_imported_raw_graph(&imported_raw_graph, seed);
     let imported_graph = generate_graph_from_imported_towns(&imported_raw_graph, &imported_towns);
 
     Ok((imported_graph, imported_towns))
@@ -665,27 +666,23 @@ fn parse_edge_line(line: &str) -> Option<(String, String, String)> {
 
 // Generate towns from a loaded in DOT file
 fn generate_towns_from_imported_raw_graph(
-    rng: &mut StdRng,
-    ids: &mut HashSet<u32>,
     graph: &Graph<TownRaw, JourneyInfo>,
+    seed: u64,
 ) -> Vec<Town> {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut id_tracker = IdTracker::new(seed);
+
     let town_names: Vec<String> = graph.node_weights().map(|town| town.name.clone()).collect();
 
     let mut towns = Vec::new();
 
     for townname in town_names {
-        let mut town_id = rng.gen_range(1..MAX_ID);
-        while ids.contains(&town_id) {
-            town_id = rng.gen_range(1..MAX_ID);
-        }
-        ids.insert(town_id);
-
         let number_of_buildings = rng.gen_range(MIN_BUILDINGS..MAX_BUILDINGS);
 
-        let buildings = generate_buildings(rng, ids, number_of_buildings);
+        let buildings = generate_buildings(&mut rng, &mut id_tracker, number_of_buildings);
 
         towns.push(Town {
-            id: town_id,
+            id: id_tracker.get_new_id(),
             name: townname,
             coords: (0, 0),
             number_of_buildings,
@@ -730,11 +727,8 @@ fn generate_graph_from_imported_towns(
 
 // Main function
 fn main() {
-    let seed = seed_from_word();
-    let mut rng = StdRng::seed_from_u64(seed); //Creates an StdRng (seedable random number generator) using the seed.
-    let mut ids = HashSet::new();
-
-    let (graph, towns) = generate_towns(&mut rng, &mut ids);
+    let seed = seed_from_word(SEED);
+    let (graph, towns) = generate_towns(seed);
 
     match save_graph(&graph, "graph.dot") {
         Ok(result) => println!("{}", result),
@@ -745,7 +739,9 @@ fn main() {
         Err(e) => eprintln!("{}", e),
     }
 
-    match import(&mut rng, &mut ids, "import.dot") {
+    let import_seed = seed_from_word(SEED);
+
+    match import("import.dot", import_seed) {
         Ok(imported) => {
             match save_graph(&imported.0, "imported_graph.dot") {
                 Ok(result) => println!("{}", result),
