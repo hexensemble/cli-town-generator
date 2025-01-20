@@ -1,4 +1,6 @@
+use itertools::Itertools;
 use petgraph::graph::NodeIndex;
+use petgraph::unionfind::UnionFind;
 use petgraph::visit::EdgeRef;
 use petgraph::Graph;
 use rand::rngs::StdRng;
@@ -555,7 +557,7 @@ fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Cont
     containers
 }
 
-// Generate a graph with towns and edges with distance and cost
+// Generate a graph with towns and edges using Kruskal’s Algorithm
 fn generate_graph(
     rng: &mut StdRng,
     towns: Vec<Town>,
@@ -568,16 +570,52 @@ fn generate_graph(
         town_nodes.push(node);
     }
 
-    for _ in 0..NUM_OF_CONNECTIONS {
-        let town1 = town_nodes[rng.gen_range(0..town_nodes.len())];
-        let town2 = town_nodes[rng.gen_range(0..town_nodes.len())];
+    // Create a lookup table for constant-time index retrieval
+    let node_map: HashMap<NodeIndex, usize> = town_nodes
+        .iter()
+        .enumerate()
+        .map(|(i, &n)| (n, i))
+        .collect();
 
-        if town1 != town2 && !town_graph.contains_edge(town1, town2) {
+    let mut town_pairs: Vec<(NodeIndex, NodeIndex, u32)> = town_nodes
+        .iter()
+        .tuple_combinations()
+        .map(|(&t1, &t2)| {
             let distance = rng.gen_range(MIN_DISTANCE..MAX_DISTANCE);
-            let cost = COST * distance;
+            (t1, t2, distance)
+        })
+        .collect();
 
-            town_graph.add_edge(town1, town2, JourneyInfo { distance, cost });
+    town_pairs.sort_unstable_by_key(|&(_, _, dist)| dist);
+
+    let mut uf = UnionFind::new(town_nodes.len());
+    let mut edges_added = 0;
+
+    for (town1, town2, distance) in &town_pairs {
+        let idx1 = *node_map.get(town1).expect("Town1 not found in node_map");
+        let idx2 = *node_map.get(town2).expect("Town2 not found in node_map");
+
+        if uf.union(idx1, idx2) {
+            let cost = COST * distance;
+            town_graph.add_edge(
+                *town1,
+                *town2,
+                JourneyInfo {
+                    distance: *distance,
+                    cost,
+                },
+            );
+            edges_added += 1;
         }
+    }
+
+    for (town1, town2, distance) in town_pairs
+        .into_iter()
+        .skip(edges_added)
+        .take(NUM_OF_CONNECTIONS as usize - edges_added)
+    {
+        let cost = COST * distance;
+        town_graph.add_edge(town1, town2, JourneyInfo { distance, cost });
     }
 
     (town_graph, town_nodes)
