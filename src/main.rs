@@ -95,8 +95,8 @@ impl JourneyInfo {
     fn from_label(label: &str) -> Option<Self> {
         let parts: Vec<&str> = label.split("/").map(|s| s.trim()).collect();
         if parts.len() == 2 {
-            let distance = parts[0].trim().split_whitespace().next()?.parse().ok()?;
-            let cost = parts[1].trim().split_whitespace().next()?.parse().ok()?;
+            let distance = parts[0].split_whitespace().next()?.parse().ok()?;
+            let cost = parts[1].split_whitespace().next()?.parse().ok()?;
             Some(Self { distance, cost })
         } else {
             None
