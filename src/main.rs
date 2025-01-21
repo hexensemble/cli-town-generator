@@ -1,3 +1,4 @@
+use config::{Config, ConfigError, File};
 use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 use petgraph::unionfind::UnionFind;
@@ -16,59 +17,56 @@ use std::{fs, io};
 use strum::EnumCount;
 use strum_macros::{EnumCount, EnumIter};
 
-// Seed for generating everything
-const SEED: &str = "Generate";
+// Struct for config settings
+#[derive(Debug, Deserialize)]
+struct AppConfig {
+    seed: String,
+    num_of_towns: usize,
+    num_of_connections: u32,
+    min_distance: u32,
+    max_distance: u32,
+    cost: u32,
+    min_id: u32,
+    max_id: u32,
+    min_buildings: u32,
+    max_buildings: u32,
+    min_npcs: u32,
+    max_npcs: u32,
+    min_rooms: u32,
+    max_rooms: u32,
+    min_containers: u32,
+    max_containers: u32,
+    input_dir: String,
+    output_dir: String,
+}
 
-// Number of towns to generate
-const NUM_OF_TOWNS: usize = 15;
+impl AppConfig {
+    fn load(filename: &str) -> Result<Self, ConfigError> {
+        let file_contents = Config::builder()
+            .set_default("seed", "Generate")?
+            .set_default("num_of_towns", 15)?
+            .set_default("num_of_connections", 20)?
+            .set_default("min_distance", 10)?
+            .set_default("max_distance", 100)?
+            .set_default("cost", 5)?
+            .set_default("min_id", 1)?
+            .set_default("max_id", 100000)?
+            .set_default("min_buildings", 5)?
+            .set_default("max_buildings", 25)?
+            .set_default("min_npcs", 2)?
+            .set_default("max_npcs", 10)?
+            .set_default("min_rooms", 2)?
+            .set_default("max_rooms", 6)?
+            .set_default("min_containers", 0)?
+            .set_default("max_containers", 4)?
+            .set_default("input_dir", "input")?
+            .set_default("output_dir", "output")?
+            .add_source(File::with_name(filename).required(false))
+            .build()?;
 
-// Number of connections between towns
-const NUM_OF_CONNECTIONS: u32 = 23;
-
-// Min distance between towns
-const MIN_DISTANCE: u32 = 2;
-
-// Max distance between towns
-const MAX_DISTANCE: u32 = 50;
-
-// Initial cost of travel which will be mutiplied by distance
-const COST: u32 = 5;
-
-// Min number for IDs
-const MIN_ID: u32 = 1;
-
-// Max number for IDs
-const MAX_ID: u32 = 100000;
-
-// Min number of buildings per town
-const MIN_BUILDINGS: u32 = 5;
-
-// Max number of buildings per town
-const MAX_BUILDINGS: u32 = 25;
-
-// Min number of NPCs per building
-const MIN_NPCS: u32 = 4;
-
-// Max number of NPCs per building
-const MAX_NPCS: u32 = 10;
-
-// Min number of rooms per building
-const MIN_ROOMS: u32 = 2;
-
-// Max number of rooms per building
-const MAX_ROOMS: u32 = 6;
-
-// Min number of containers per room
-const MIN_CONTAINERS: u32 = 0;
-
-// Max number of containers per room
-const MAX_CONTAINERS: u32 = 5;
-
-// Input directory for loading files
-const INPUT_DIR: &str = "input";
-
-// Output directory for saving files
-const OUTPUT_DIR: &str = "output";
+        file_contents.try_deserialize::<AppConfig>()
+    }
+}
 
 // Struct for representing a town
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -188,11 +186,11 @@ impl IdTracker {
         }
     }
 
-    fn get_new_id(&mut self) -> u32 {
-        let mut id = self.rng.gen_range(MIN_ID..MAX_ID);
+    fn get_new_id(&mut self, settings: &AppConfig) -> u32 {
+        let mut id = self.rng.gen_range(settings.min_id..settings.max_id);
 
         while self.ids.contains(&id) {
-            id = self.rng.gen_range(MIN_ID..MAX_ID);
+            id = self.rng.gen_range(settings.min_id..settings.max_id);
         }
         self.ids.insert(id);
 
@@ -201,8 +199,8 @@ impl IdTracker {
 }
 
 // Function for loading in lists of names from .TXT files
-fn load_list(filename: &str) -> Vec<String> {
-    let filepath = format!("{}/{}", INPUT_DIR, filename);
+fn load_list(settings: &AppConfig, filename: &str) -> Vec<String> {
+    let filepath = format!("{}/{}", settings.input_dir, filename);
 
     match fs::File::open(filepath) {
         Ok(file) => {
@@ -228,22 +226,23 @@ fn seed_from_word(word: &str) -> u64 {
 }
 
 // Function to generate multiple towns and create a graph
-fn generate_towns(seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
+fn generate_towns(settings: &AppConfig, seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut id_tracker = IdTracker::new(seed);
 
     let mut towns = Vec::new();
 
-    let prefixes = load_list("town-prefixes.txt");
-    let roots = load_list("town-roots.txt");
-    let suffixes = load_list("town-suffixes.txt");
+    let prefixes = load_list(settings, "town-prefixes.txt");
+    let roots = load_list(settings, "town-roots.txt");
+    let suffixes = load_list(settings, "town-suffixes.txt");
 
-    for _ in 0..NUM_OF_TOWNS {
-        let number_of_buildings = rng.gen_range(MIN_BUILDINGS..MAX_BUILDINGS);
-        let buildings = generate_buildings(&mut rng, &mut id_tracker, number_of_buildings);
+    for _ in 0..settings.num_of_towns {
+        let number_of_buildings = rng.gen_range(settings.min_buildings..settings.max_buildings);
+        let buildings =
+            generate_buildings(settings, &mut rng, &mut id_tracker, number_of_buildings);
 
         towns.push(Town {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             name: generate_town_name(&mut rng, &prefixes, &roots, &suffixes),
             coords: (0, 0),
             number_of_buildings,
@@ -252,7 +251,7 @@ fn generate_towns(seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
     }
 
     let graph_and_nodes: (Graph<Town, JourneyInfo>, Vec<NodeIndex>) =
-        generate_graph(&mut rng, towns);
+        generate_graph(settings, &mut rng, towns);
 
     let list_of_towns: Vec<Town> = graph_and_nodes
         .1
@@ -296,16 +295,17 @@ fn generate_town_name(
 
 // Function to generate buildings
 fn generate_buildings(
+    settings: &AppConfig,
     rng: &mut StdRng,
     id_tracker: &mut IdTracker,
     number_of_buildings: u32,
 ) -> Vec<Building> {
     let mut buildings = Vec::new();
 
-    let surnames = load_list("surnames.txt");
-    let shops = load_list("shops.txt");
-    let taverns = load_list("taverns.txt");
-    let temples = load_list("temples.txt");
+    let surnames = load_list(settings, "surnames.txt");
+    let shops = load_list(settings, "shops.txt");
+    let taverns = load_list(settings, "taverns.txt");
+    let temples = load_list(settings, "temples.txt");
 
     let grid_size = (number_of_buildings as f32).sqrt().ceil() as u32;
     let mut position = (0, 0);
@@ -320,7 +320,7 @@ fn generate_buildings(
         };
 
         let mut building = Building {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             name: generate_building_name(
                 rng,
                 &building_type,
@@ -334,9 +334,15 @@ fn generate_buildings(
             rooms: Vec::new(),
         };
 
-        let mut npcs = generate_npcs(rng, id_tracker, &building.name, &building.building_type);
+        let mut npcs = generate_npcs(
+            settings,
+            rng,
+            id_tracker,
+            &building.name,
+            &building.building_type,
+        );
 
-        building.rooms = generate_rooms(rng, id_tracker, &mut npcs);
+        building.rooms = generate_rooms(settings, rng, id_tracker, &mut npcs);
 
         buildings.push(building);
 
@@ -397,6 +403,7 @@ fn generate_building_name(
 
 // Generate NPCs
 fn generate_npcs(
+    settings: &AppConfig,
     rng: &mut StdRng,
     id_tracker: &mut IdTracker,
     building_name: &str,
@@ -404,15 +411,15 @@ fn generate_npcs(
 ) -> Vec<Npc> {
     let mut npcs = Vec::new();
 
-    let names_male = load_list("names-male.txt");
-    let names_female = load_list("names-female.txt");
-    let names_unisex = load_list("names-unisex.txt");
-    let surnames = load_list("surnames.txt");
+    let names_male = load_list(settings, "names-male.txt");
+    let names_female = load_list(settings, "names-female.txt");
+    let names_unisex = load_list(settings, "names-unisex.txt");
+    let surnames = load_list(settings, "surnames.txt");
 
     let number_of_npcs = match building_type {
         BuildingType::Shop => 1,
         BuildingType::Residence => 2,
-        _ => rng.gen_range(MIN_NPCS..MAX_NPCS),
+        _ => rng.gen_range(settings.min_npcs..settings.max_npcs),
     };
 
     for _ in 0..number_of_npcs {
@@ -430,7 +437,7 @@ fn generate_npcs(
         };
 
         npcs.push(Npc {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             name: generate_npc_name(
                 rng,
                 building_name,
@@ -510,16 +517,21 @@ fn generate_npc_name(
 }
 
 // Generate rooms
-fn generate_rooms(rng: &mut StdRng, id_tracker: &mut IdTracker, npcs: &mut Vec<Npc>) -> Vec<Room> {
+fn generate_rooms(
+    settings: &AppConfig,
+    rng: &mut StdRng,
+    id_tracker: &mut IdTracker,
+    npcs: &mut Vec<Npc>,
+) -> Vec<Room> {
     let mut rooms = Vec::new();
 
-    let number_of_rooms = rng.gen_range(MIN_ROOMS..MAX_ROOMS);
+    let number_of_rooms = rng.gen_range(settings.min_rooms..settings.max_rooms);
 
     for _ in 0..number_of_rooms {
         rooms.push(Room {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             npcs: Vec::new(),
-            containers: generate_containers(rng, id_tracker),
+            containers: generate_containers(settings, rng, id_tracker),
         });
     }
 
@@ -535,10 +547,14 @@ fn generate_rooms(rng: &mut StdRng, id_tracker: &mut IdTracker, npcs: &mut Vec<N
 }
 
 // Generate containers
-fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Container> {
+fn generate_containers(
+    settings: &AppConfig,
+    rng: &mut StdRng,
+    id_tracker: &mut IdTracker,
+) -> Vec<Container> {
     let mut containers = Vec::new();
 
-    let num_of_containers = rng.gen_range(MIN_CONTAINERS..MAX_CONTAINERS);
+    let num_of_containers = rng.gen_range(settings.min_containers..settings.max_containers);
 
     for _ in 0..num_of_containers {
         let container_type = match rng.gen_range(0..ContainerType::COUNT) {
@@ -549,7 +565,7 @@ fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Cont
         };
 
         containers.push(Container {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             container_type,
         });
     }
@@ -559,6 +575,7 @@ fn generate_containers(rng: &mut StdRng, id_tracker: &mut IdTracker) -> Vec<Cont
 
 // Generate a graph with towns and edges using Kruskal’s Algorithm
 fn generate_graph(
+    settings: &AppConfig,
     rng: &mut StdRng,
     towns: Vec<Town>,
 ) -> (Graph<Town, JourneyInfo>, Vec<NodeIndex>) {
@@ -581,7 +598,7 @@ fn generate_graph(
         .iter()
         .tuple_combinations()
         .map(|(&t1, &t2)| {
-            let distance = rng.gen_range(MIN_DISTANCE..MAX_DISTANCE);
+            let distance = rng.gen_range(settings.min_distance..settings.max_distance);
             (t1, t2, distance)
         })
         .collect();
@@ -596,7 +613,7 @@ fn generate_graph(
         let idx2 = *node_map.get(town2).expect("Town2 not found in node_map");
 
         if uf.union(idx1, idx2) {
-            let cost = COST * distance;
+            let cost = settings.cost * distance;
             town_graph.add_edge(
                 *town1,
                 *town2,
@@ -612,9 +629,9 @@ fn generate_graph(
     for (town1, town2, distance) in town_pairs
         .into_iter()
         .skip(edges_added)
-        .take(NUM_OF_CONNECTIONS as usize - edges_added)
+        .take(settings.num_of_connections as usize - edges_added)
     {
-        let cost = COST * distance;
+        let cost = settings.cost * distance;
         town_graph.add_edge(town1, town2, JourneyInfo { distance, cost });
     }
 
@@ -622,7 +639,11 @@ fn generate_graph(
 }
 
 // Save graph to a DOT file
-fn save_graph(graph: &Graph<Town, JourneyInfo>, filename: &str) -> Result<String, std::io::Error> {
+fn save_graph(
+    settings: &AppConfig,
+    graph: &Graph<Town, JourneyInfo>,
+    filename: &str,
+) -> Result<String, std::io::Error> {
     let mut dot_output = String::from("graph Towns {\n");
 
     for edge in graph.edge_references() {
@@ -642,19 +663,23 @@ fn save_graph(graph: &Graph<Town, JourneyInfo>, filename: &str) -> Result<String
 
     dot_output.push_str("}\n");
 
-    let filepath = format!("{}/{}", OUTPUT_DIR, filename);
-    fs::create_dir_all(OUTPUT_DIR)?;
+    let filepath = format!("{}/{}", settings.output_dir, filename);
+    fs::create_dir_all(settings.output_dir.clone())?;
     fs::write(filepath, dot_output)?;
 
     Ok("Graph DOT file saved successfully".into())
 }
 
 // Save towns to a JSON file
-fn save_towns(towns: &Vec<Town>, filename: &str) -> Result<String, std::io::Error> {
+fn save_towns(
+    settings: &AppConfig,
+    towns: &Vec<Town>,
+    filename: &str,
+) -> Result<String, std::io::Error> {
     let json = serde_json::to_string_pretty(towns)?;
 
-    let filepath = format!("{}/{}", OUTPUT_DIR, filename);
-    fs::create_dir_all(OUTPUT_DIR)?;
+    let filepath = format!("{}/{}", settings.output_dir, filename);
+    fs::create_dir_all(settings.output_dir.clone())?;
     fs::write(filepath, json)?;
 
     Ok("Towns JSON file saved successfully".into())
@@ -662,20 +687,25 @@ fn save_towns(towns: &Vec<Town>, filename: &str) -> Result<String, std::io::Erro
 
 // Import a DOT file and generate Towns and Graph
 fn import(
+    settings: &AppConfig,
     filename: &str,
     seed: u64,
 ) -> Result<(Graph<Town, JourneyInfo>, Vec<Town>), std::io::Error> {
-    let imported_raw_graph = load_dot(filename)?;
+    let imported_raw_graph = load_dot(settings, filename)?;
 
-    let imported_towns = generate_towns_from_imported_raw_graph(&imported_raw_graph, seed);
+    let imported_towns =
+        generate_towns_from_imported_raw_graph(settings, &imported_raw_graph, seed);
     let imported_graph = generate_graph_from_imported_towns(&imported_raw_graph, &imported_towns);
 
     Ok((imported_graph, imported_towns))
 }
 
 // Load a DOT file
-fn load_dot(filename: &str) -> Result<Graph<TownRaw, JourneyInfo>, std::io::Error> {
-    let filepath = format!("{}/{}", INPUT_DIR, filename);
+fn load_dot(
+    settings: &AppConfig,
+    filename: &str,
+) -> Result<Graph<TownRaw, JourneyInfo>, std::io::Error> {
+    let filepath = format!("{}/{}", settings.input_dir, filename);
 
     let file_content = fs::read_to_string(filepath)?;
 
@@ -737,6 +767,7 @@ fn parse_edge_line(line: &str) -> Option<(String, String, String)> {
 
 // Generate towns from a loaded in DOT file
 fn generate_towns_from_imported_raw_graph(
+    settings: &AppConfig,
     graph: &Graph<TownRaw, JourneyInfo>,
     seed: u64,
 ) -> Vec<Town> {
@@ -748,12 +779,13 @@ fn generate_towns_from_imported_raw_graph(
     let mut towns = Vec::new();
 
     for townname in town_names {
-        let number_of_buildings = rng.gen_range(MIN_BUILDINGS..MAX_BUILDINGS);
+        let number_of_buildings = rng.gen_range(settings.min_buildings..settings.max_buildings);
 
-        let buildings = generate_buildings(&mut rng, &mut id_tracker, number_of_buildings);
+        let buildings =
+            generate_buildings(settings, &mut rng, &mut id_tracker, number_of_buildings);
 
         towns.push(Town {
-            id: id_tracker.get_new_id(),
+            id: id_tracker.get_new_id(settings),
             name: townname,
             coords: (0, 0),
             number_of_buildings,
@@ -798,27 +830,35 @@ fn generate_graph_from_imported_towns(
 
 // Main function
 fn main() {
-    let seed = seed_from_word(SEED);
-    let (graph, towns) = generate_towns(seed);
+    let settings = match AppConfig::load("settings.toml") {
+        Ok(config) => config,
+        Err(e) => {
+            eprint!("FATAL ERROR: {}", e);
+            panic!();
+        }
+    };
 
-    match save_graph(&graph, "graph.dot") {
+    let seed = seed_from_word(&settings.seed);
+    let (graph, towns) = generate_towns(&settings, seed);
+
+    match save_graph(&settings, &graph, "graph.dot") {
         Ok(result) => println!("{}", result),
         Err(e) => eprintln!("{}", e),
     }
-    match save_towns(&towns, "towns.json") {
+    match save_towns(&settings, &towns, "towns.json") {
         Ok(result) => println!("{}", result),
         Err(e) => eprintln!("{}", e),
     }
 
-    let import_seed = seed_from_word(SEED);
+    let import_seed = seed_from_word(&settings.seed);
 
-    match import("import.dot", import_seed) {
+    match import(&settings, "import.dot", import_seed) {
         Ok(imported) => {
-            match save_graph(&imported.0, "imported_graph.dot") {
+            match save_graph(&settings, &imported.0, "imported_graph.dot") {
                 Ok(result) => println!("{}", result),
                 Err(e) => eprintln!("{}", e),
             }
-            match save_towns(&imported.1, "imported_towns.json") {
+            match save_towns(&settings, &imported.1, "imported_towns.json") {
                 Ok(result) => println!("{}", result),
                 Err(e) => eprintln!("{}", e),
             }
