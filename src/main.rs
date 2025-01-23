@@ -1,4 +1,5 @@
 use config::{Config, ConfigError, File};
+use inquire::validator::Validation;
 use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 use petgraph::unionfind::UnionFind;
@@ -11,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::BufRead;
-use std::{fs, io};
+use std::io::{self, BufRead, Write};
 use strum::EnumCount;
 use strum_macros::{EnumCount, EnumIter};
 
@@ -42,6 +43,8 @@ struct AppConfig {
 
 impl AppConfig {
     fn load(filename: &str) -> Result<Self, ConfigError> {
+        print!("Loading settings from file: \"{}\"... ", filename);
+
         let file_contents = Config::builder()
             .set_default("seed", "Generate")?
             .set_default("num_of_towns", 15)?
@@ -220,13 +223,20 @@ fn load_list(settings: &AppConfig, filename: &str) -> Vec<String> {
 
 // Function to derive a consistent seed from a word or phrase
 fn seed_from_word(word: &str) -> u64 {
+    print!("Generating seed from word: \"{}\"... ", word);
+
     let mut hasher = DefaultHasher::new();
     word.hash(&mut hasher);
+
+    println!("done!");
+
     hasher.finish()
 }
 
 // Function to generate multiple towns and create a graph
 fn generate_towns(settings: &AppConfig, seed: u64) -> (Graph<Town, JourneyInfo>, Vec<Town>) {
+    print!("Generating towns... ");
+
     let mut rng = StdRng::seed_from_u64(seed);
     let mut id_tracker = IdTracker::new(seed);
 
@@ -249,6 +259,8 @@ fn generate_towns(settings: &AppConfig, seed: u64) -> (Graph<Town, JourneyInfo>,
             buildings,
         });
     }
+
+    println!("done!");
 
     let graph_and_nodes: (Graph<Town, JourneyInfo>, Vec<NodeIndex>) =
         generate_graph(settings, &mut rng, towns);
@@ -579,6 +591,8 @@ fn generate_graph(
     rng: &mut StdRng,
     towns: Vec<Town>,
 ) -> (Graph<Town, JourneyInfo>, Vec<NodeIndex>) {
+    print!("Generating graph... ");
+
     let mut town_graph = Graph::<Town, JourneyInfo>::new();
     let mut town_nodes = Vec::new();
 
@@ -635,6 +649,8 @@ fn generate_graph(
         town_graph.add_edge(town1, town2, JourneyInfo { distance, cost });
     }
 
+    println!("done!");
+
     (town_graph, town_nodes)
 }
 
@@ -644,6 +660,8 @@ fn save_graph(
     graph: &Graph<Town, JourneyInfo>,
     filename: &str,
 ) -> Result<String, std::io::Error> {
+    print!("Saving graph to file: \"{}\"... ", filename);
+
     let mut dot_output = String::from("graph Towns {\n");
 
     for edge in graph.edge_references() {
@@ -667,7 +685,7 @@ fn save_graph(
     fs::create_dir_all(settings.output_dir.clone())?;
     fs::write(filepath, dot_output)?;
 
-    Ok("Graph DOT file saved successfully".into())
+    Ok("done!".into())
 }
 
 // Save towns to a JSON file
@@ -676,13 +694,15 @@ fn save_towns(
     towns: &Vec<Town>,
     filename: &str,
 ) -> Result<String, std::io::Error> {
+    print!("Saving towns to file: \"{}\"... ", filename);
+
     let json = serde_json::to_string_pretty(towns)?;
 
     let filepath = format!("{}/{}", settings.output_dir, filename);
     fs::create_dir_all(settings.output_dir.clone())?;
     fs::write(filepath, json)?;
 
-    Ok("Towns JSON file saved successfully".into())
+    Ok("done!".into())
 }
 
 // Import a DOT file and generate Towns and Graph
@@ -705,6 +725,9 @@ fn load_dot(
     settings: &AppConfig,
     filename: &str,
 ) -> Result<Graph<TownRaw, JourneyInfo>, std::io::Error> {
+    print!("Loading .dot file: \"{}\"... ", filename);
+    io::stdout().flush()?;
+
     let filepath = format!("{}/{}", settings.input_dir, filename);
 
     let file_content = fs::read_to_string(filepath)?;
@@ -731,6 +754,8 @@ fn load_dot(
             }
         }
     }
+
+    println!("done!");
 
     Ok(graph)
 }
@@ -771,6 +796,8 @@ fn generate_towns_from_imported_raw_graph(
     graph: &Graph<TownRaw, JourneyInfo>,
     seed: u64,
 ) -> Vec<Town> {
+    print!("Generating towns... ");
+
     let mut rng = StdRng::seed_from_u64(seed);
     let mut id_tracker = IdTracker::new(seed);
 
@@ -792,6 +819,8 @@ fn generate_towns_from_imported_raw_graph(
             buildings,
         });
     }
+
+    println!("done!");
 
     towns
 }
@@ -828,41 +857,93 @@ fn generate_graph_from_imported_towns(
     town_graph
 }
 
+// Menu logic
+fn menu(settings: &AppConfig) {
+    let message = "Please select an option:".to_string();
+    let option1 = "Generate New Towns";
+    let option2 = "Import .dot file";
+    let option3 = "Exit";
+    let options = vec![option1, option2, option3];
+
+    loop {
+        println!(" ");
+
+        match inquire::Select::new(&message, options.clone()).prompt() {
+            Ok(choice) => {
+                if choice == option1 {
+                    let seed = seed_from_word(&settings.seed);
+                    let (graph, towns) = generate_towns(settings, seed);
+
+                    match save_graph(settings, &graph, "graph.dot") {
+                        Ok(result) => println!("{}", result),
+                        Err(e) => eprintln!("{}", e),
+                    }
+                    match save_towns(settings, &towns, "towns.json") {
+                        Ok(result) => println!("{}", result),
+                        Err(e) => eprintln!("{}", e),
+                    }
+                }
+                if choice == option2 {
+                    let filename_validator = |input: &str| {
+                        if input.ends_with(".dot") {
+                            Ok(Validation::Valid)
+                        } else {
+                            Ok(Validation::Invalid("File name must end with .dot".into()))
+                        }
+                    };
+
+                    match inquire::Text::new("Enter file name to import:")
+                        .with_validator(filename_validator)
+                        .prompt()
+                    {
+                        Ok(filename) => {
+                            let import_seed = seed_from_word(&settings.seed);
+
+                            match import(settings, &filename, import_seed) {
+                                Ok(imported) => {
+                                    match save_graph(settings, &imported.0, "imported_graph.dot") {
+                                        Ok(result) => println!("{}", result),
+                                        Err(e) => eprintln!("{}", e),
+                                    }
+                                    match save_towns(settings, &imported.1, "imported_towns.json") {
+                                        Ok(result) => println!("{}", result),
+                                        Err(e) => eprintln!("{}", e),
+                                    }
+                                }
+                                Err(e) => eprintln!("{}", e),
+                            }
+                        }
+                        Err(e) => eprint!("{}", e),
+                    }
+                }
+                if choice == option3 {
+                    break;
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                break;
+            }
+        }
+    }
+}
+
 // Main function
 fn main() {
     let settings = match AppConfig::load("settings.toml") {
-        Ok(config) => config,
+        Ok(config) => {
+            println!("done!");
+            config
+        }
         Err(e) => {
-            eprint!("FATAL ERROR: {}", e);
+            eprintln!("Unable to load settings file: {}", e);
             panic!();
         }
     };
 
-    let seed = seed_from_word(&settings.seed);
-    let (graph, towns) = generate_towns(&settings, seed);
+    println!("\nWelcome to Town Generator!\nv1.0\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
 
-    match save_graph(&settings, &graph, "graph.dot") {
-        Ok(result) => println!("{}", result),
-        Err(e) => eprintln!("{}", e),
-    }
-    match save_towns(&settings, &towns, "towns.json") {
-        Ok(result) => println!("{}", result),
-        Err(e) => eprintln!("{}", e),
-    }
+    menu(&settings);
 
-    let import_seed = seed_from_word(&settings.seed);
-
-    match import(&settings, "import.dot", import_seed) {
-        Ok(imported) => {
-            match save_graph(&settings, &imported.0, "imported_graph.dot") {
-                Ok(result) => println!("{}", result),
-                Err(e) => eprintln!("{}", e),
-            }
-            match save_towns(&settings, &imported.1, "imported_towns.json") {
-                Ok(result) => println!("{}", result),
-                Err(e) => eprintln!("{}", e),
-            }
-        }
-        Err(e) => eprint!("{}", e),
-    }
+    println!("Goodbye!");
 }
