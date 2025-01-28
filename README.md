@@ -1,6 +1,6 @@
 # Town Generator
 
-A procedural town-generation tool for a CLI RPG I'm developing. 🏰
+Procedural town-generation tool for a CLI RPG I'm developing. 🏰
 
 - Randomly generates towns with buildings, rooms, NPCs, chests, and more.
 - Exports world data as a JSON file and town connections as a DOT file.
