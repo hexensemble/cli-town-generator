@@ -1,4 +1,4 @@
-# town-generator
+# Town Generator
 
 A procedural world-generation tool for a CLI RPG I'm developing. 🏰
 
