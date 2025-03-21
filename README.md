@@ -1,4 +1,4 @@
-# Town Generator
+# CLI Town Generator
 
 Procedural town generation tool, built with Rust. 🏰
 
