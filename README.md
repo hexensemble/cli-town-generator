@@ -4,7 +4,7 @@ Procedural town generation tool, built with Rust. 🏰
 
 <br>
 
-![Town Generator](preview.png)
+![CLI Town Generator](preview.png)
 
 <br>
 
