@@ -1,6 +1,6 @@
 # Town Generator
 
-Procedural town-generation tool for a CLI RPG I'm developing. 🏰
+Procedural town generation tool, built with Rust. 🏰
 
 <br>
 
