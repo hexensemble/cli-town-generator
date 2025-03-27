@@ -2,7 +2,7 @@
 
 Procedural town generation tool, built with Rust. 🏰
 
-Towns can be explored using [Town Explorer](https://github.com/hexensemble/cli-town-explorer).
+Towns can be explored using [CLI Town Explorer](https://github.com/hexensemble/cli-town-explorer).
 
 <br>
 
