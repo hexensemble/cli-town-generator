@@ -1081,7 +1081,7 @@ fn menu(settings: &AppConfig) {
                     let seed = seed_from_word(&settings.seed);
                     let (graph, towns, world) = generate_world(settings, seed);
 
-                    match save_graph(settings, &graph, "graph.dot") {
+                    match save_graph(settings, &graph, "world.dot") {
                         Ok(result) => println!("{}", result),
                         Err(e) => eprintln!("{}", e),
                     }
@@ -1114,7 +1114,7 @@ fn menu(settings: &AppConfig) {
                                 Ok(imported) => {
                                     let (graph, towns, world) = imported;
 
-                                    match save_graph(settings, &graph, "imported_graph.dot") {
+                                    match save_graph(settings, &graph, "imported_world.dot") {
                                         Ok(result) => println!("{}", result),
                                         Err(e) => eprintln!("{}", e),
                                     }
@@ -1158,7 +1158,7 @@ fn main() {
         }
     };
 
-    println!("\nWelcome to Town Generator!\nv1.1\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
+    println!("\nWelcome to CLI Town Generator!\nv1.2\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
 
     menu(&settings);
 
