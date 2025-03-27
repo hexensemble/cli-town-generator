@@ -1158,7 +1158,7 @@ fn main() {
         }
     };
 
-    println!("\nWelcome to CLI Town Generator!\nv1.0\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
+    println!("\nWelcome to CLI Town Generator!\nv1.0\nby HexEnsemble\n\nThis app will generate towns, buildings, rooms, NPCs, and containers based on a seed.\n\nEdit settings.toml to change generation parameters.\n\nTweak the generated dot file and import to regenerate towns.\n(import file goes in input folder)\n\nExplore generated towns with CLI Town Explorer.");
 
     menu(&settings);
 
