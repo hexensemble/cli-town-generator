@@ -1158,7 +1158,7 @@ fn main() {
         }
     };
 
-    println!("\nWelcome to CLI Town Generator!\nv1.2\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
+    println!("\nWelcome to CLI Town Generator!\nv1.0\nby HexEnsemble\n\nEdit the settings file to change paramaters.");
 
     menu(&settings);
 
