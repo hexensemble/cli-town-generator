@@ -8,7 +8,7 @@ This CLI tool will randomly generate text-based lists of towns, including buildi
 
 Generated towns can be "explored" using my [CLI Town Explorer](https://github.com/hexensemble/cli-town-explorer).
 
-Everything is configurable via a settings file for customization.
+Everything is configurable via `settings.toml` for customization.
 
 You can even manually edit a generated DOT file then reimport it to generate the corresponding town data.
 
