@@ -16,6 +16,8 @@ You can even manually edit a generated DOT file then reimport it to generate the
 
 ![CLI Town Generator](preview.png)
 
+<br>
+
 **Download:** https://github.com/hexensemble/cli-town-generator/releases
 
 <br>
